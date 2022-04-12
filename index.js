@@ -78,7 +78,6 @@ discordClient.login(process.env.DISCORD_TOKEN);
 discordClient.once('ready', readyDiscord);
 
 async function readyDiscord() {
-  go("It's fascinating to");
   setInterval(generateTweet, 60 * 60 * 1000);
   console.log('💖');
 }
