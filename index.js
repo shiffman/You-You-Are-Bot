@@ -78,7 +78,7 @@ discordClient.login(process.env.DISCORD_TOKEN);
 discordClient.once('ready', readyDiscord);
 
 async function readyDiscord() {
-  generateTweet();
+  go("It's fascinating to");
   setInterval(generateTweet, 60 * 60 * 1000);
   console.log('💖');
 }
@@ -296,7 +296,7 @@ async function centerOf() {
       },
       headers: {
         'X-RapidAPI-Host': 'wordsapiv1.p.rapidapi.com',
-        'X-RapidAPI-Key': '9f195dab6bmshf5576a743ff63e0p1756c1jsnb96cca4f9138',
+        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
       },
     };
     const { data } = await axios.request(params);
@@ -464,7 +464,7 @@ async function query(prompt, num_return_sequences) {
   const data = {
     inputs: prompt,
     parameters: {
-      max_length: 60,
+      max_length: 120,
       return_full_text: true,
       // top_k: 10000,
       top_p: 0.9,
@@ -486,9 +486,12 @@ async function query(prompt, num_return_sequences) {
   return result;
 }
 
-async function go() {
-  const r = Math.floor(Math.random() * prompts.length);
-  let prompt = prompts[r];
+async function go(input) {
+  let prompt = input;
+  if (!prompt) {
+    const r = Math.floor(Math.random() * prompts.length);
+    prompt = prompts[r];
+  }
 
   if (Math.random() < 0.25) {
     const len = Math.floor(Math.random() * 10 + 3);
@@ -501,7 +504,7 @@ async function go() {
     prompt = tokens.slice(0, len).join(' ');
   }
   console.log(prompt);
-  const result = await query(prompt, 3);
+  const result = await query(prompt, 10);
   const choices = [];
   for (let i = 0; i < result.length; i++) {
     choices.push(result[i].generated_text);
