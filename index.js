@@ -49,16 +49,12 @@ async function tweetIt(txt, reply_id) {
   let params = undefined;
   if (reply_id) {
     params = {
-      reply: {
-        in_reply_to_tweet_id: reply_id,
-      },
+      in_reply_to_status_id: reply_id,
+      auto_populate_reply_metadata: true,
     };
   }
-  const response = await twitterClient.v2.tweet(txt, params);
-  // fs.writeFileSync('tweet.json', JSON.stringify(response));
+  const response = await twitterClient.v1.tweet(txt, params);
   return response;
-  // const { created_at, id, full_text } = response;
-  // console.log(`${id} ${created_at}: ${full_text}`);
 }
 
 const model_url =
@@ -78,7 +74,8 @@ discordClient.login(process.env.DISCORD_TOKEN);
 discordClient.once('ready', readyDiscord);
 
 async function readyDiscord() {
-  setInterval(generateTweet, 60 * 60 * 1000);
+  generateTweet();
+  setInterval(generateTweet, 60 * 60 * 2 * 1000);
   console.log('💖');
 }
 
@@ -325,7 +322,7 @@ async function acrostic() {
 
   const response = await fetch(randomWordURL);
   const json = await response.json();
-  const word = 'YOU'; //json.word.toUpperCase();
+  const word = json.word.toUpperCase();
   console.log(word);
   poem.push(`${word}, an acrostic poem experience`);
   for (let i = 0; i < word.length; i++) {
@@ -365,9 +362,11 @@ async function acrostic() {
     result = await query(prompt);
     line = result[0].generated_text;
     console.log(line);
-    const lines = line.split(/([-.!?\n])/g);
-    console.log(lines);
-    if (lines.length >= 2) line = lines[0] + lines[1];
+    if (line.length > 80) {
+      const lines = line.split(/([.!?\n])/g);
+      console.log(lines);
+      if (lines.length >= 2) line = lines[0] + lines[1];
+    }
     line = line.trim();
     poem.push(line);
   }
@@ -433,15 +432,22 @@ discordClient.on('messageReactionAdd', async (reaction, user) => {
       if (index > -1) {
         console.log('Selected: ' + emojiLookup[emoji]);
         await reaction.message.reply(`Tweeting #${index}!`);
-        await tweetIt(tweet[index], reply_id);
+        if (tweet[index].length > 280) {
+          const thread = threadIt(tweet[index]);
+          let data = await tweetIt(thread[0], reply_id);
+          for (let i = 1; i < thread.length; i++) {
+            data = await tweetIt(thread[i], data.id_str);
+          }
+        } else {
+          await tweetIt(tweet[index], reply_id);
+        }
       } else if (emoji == '👍') {
         console.log('approved');
         if (tweet.length > 280) {
           const thread = threadIt(tweet);
-          let { data } = await tweetIt(thread[0], reply_id);
-          console.log(data);
+          let data = await tweetIt(thread[0], reply_id);
           for (let i = 1; i < thread.length; i++) {
-            data = await tweetIt(thread[i], data.id);
+            data = await tweetIt(thread[i], data.id_str);
           }
         } else {
           await tweetIt(tweet, reply_id);
@@ -494,7 +500,7 @@ async function go(input) {
 
   if (Math.random() < 0.25) {
     const len = Math.floor(Math.random() * 10 + 3);
-    prompt = prompts[r].substring(0, len).trim();
+    prompt = prompt.substring(0, len).trim();
   } else {
     const len = Math.floor(Math.random() * 3 + 1);
     console.log(len);
