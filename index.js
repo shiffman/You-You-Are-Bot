@@ -366,6 +366,8 @@ async function acrostic() {
       const lines = line.split(/([.!?\n])/g);
       console.log(lines);
       if (lines.length >= 2) line = lines[0] + lines[1];
+      // Sometimes we lose an end quote
+      if (lines[2] && lines[2].charAt(0) == '"') line = line + '"';
     }
     line = line.trim();
     poem.push(line);
