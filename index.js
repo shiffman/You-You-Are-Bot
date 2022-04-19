@@ -8,7 +8,7 @@ const fetch = (...args) =>
 const axios = require('axios');
 
 const fs = require('fs');
-const data = fs.readFileSync('all.txt', 'utf-8');
+const data = fs.readFileSync('prompts.txt', 'utf-8');
 const prompts = data.split('\n');
 
 const channelID = '962162083993100388';
@@ -80,11 +80,13 @@ async function readyDiscord() {
 }
 
 function generateTweet() {
+  // go();
+  // return;
   const r = Math.random();
-  if (r < 0.25) acrostic();
-  else if (r < 0.5) goPair();
-  else if (r < 0.75) go();
-  else centerOf();
+  if (r < 0.1) acrostic();
+  else if (r < 0.2) goPair();
+  else if (r < 0.3) centerOf();
+  else go();
 }
 
 function random(arr) {
@@ -473,9 +475,8 @@ async function query(prompt, num_return_sequences) {
     parameters: {
       max_length: 120,
       return_full_text: true,
-      // top_k: 10000,
       top_p: 0.9,
-      temperature: 0.9,
+      temperature: 1.0,
       num_return_sequences: num,
     },
     options: {
@@ -500,14 +501,15 @@ async function go(input) {
     prompt = prompts[r];
   }
 
+  console.log(prompt);
   if (Math.random() < 0.25) {
     const len = Math.floor(Math.random() * 10 + 3);
+    console.log('chars', len);
     prompt = prompt.substring(0, len).trim();
   } else {
-    const len = Math.floor(Math.random() * 3 + 1);
-    console.log(len);
+    const len = Math.floor(Math.random() * 5 + 1);
+    console.log('tokens', len);
     const tokens = prompt.split(/\s+/);
-    console.log(tokens);
     prompt = tokens.slice(0, len).join(' ');
   }
   console.log(prompt);
