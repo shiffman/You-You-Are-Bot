@@ -74,12 +74,12 @@ discordClient.login(process.env.DISCORD_TOKEN);
 discordClient.once('ready', readyDiscord);
 
 async function readyDiscord() {
-  generateTweet();
+  //generateTweet();
   setInterval(generateTweet, 60 * 60 * 6 * 1000);
   console.log('💖');
 }
 
-function generateTweet() {
+async function generateTweet() {
   // go();
   // return;
 
@@ -87,8 +87,32 @@ function generateTweet() {
   if (r < 0.1) acrostic();
   else if (r < 0.2) goPair();
   else if (r < 0.3) centerOf();
-  else go();
+  else {
+    const { rickenEmbed, tweets } = await go();
+    console.log('posting to discord');
+    const msg = await discordClient.channels.cache
+      .get(channelID)
+      .send({ embeds: [rickenEmbed] });
+    queue[msg.id] = { tweet: tweets };
+  }
 }
+
+discordClient.on('interactionCreate', async (interaction) => {
+  if (!interaction.isCommand()) return;
+
+  const { commandName, user, options } = interaction;
+  console.log(commandName, user.username);
+
+  if (commandName === 'generate-you') {
+    let prompt = options.getString('prompt');
+    // Avoiding the 3 second issue?
+    await interaction.deferReply();
+    const { rickenEmbed, tweets } = await go(prompt);
+    const msg = await interaction.editReply({ embeds: [rickenEmbed] });
+    console.log(msg.id);
+    queue[msg.id] = { tweet: tweets };
+  }
+});
 
 function random(arr) {
   const i = Math.floor(Math.random() * arr.length);
@@ -248,7 +272,12 @@ async function goPair() {
     if (tweet) tries.push(tweet);
   }
   console.log(tries);
-  addChoices(tries);
+  const { rickenEmbed, tweets } = await addChoices(tries);
+  console.log('posting to discord');
+  const msg = await discordClient.channels.cache
+    .get(channelID)
+    .send({ embeds: [rickenEmbed] });
+  queue[msg.id] = { tweet: tweets };
 }
 
 function findPair() {
@@ -308,7 +337,12 @@ async function centerOf() {
       console.log('no luck');
     }
   }
-  addChoices(tweets);
+  const { rickenEmbed } = await addChoices(tweets);
+  console.log('posting to discord');
+  const msg = await discordClient.channels.cache
+    .get(channelID)
+    .send({ embeds: [rickenEmbed] });
+  queue[msg.id] = { tweet: tweets };
 }
 
 async function acrostic() {
@@ -407,22 +441,22 @@ async function add2Queue(tweet) {
 
 async function addChoices(tweets) {
   console.log('adding to queue');
-
   let content = '';
   for (let i = 0; i < tweets.length; i++) {
+    if (wordfilter.blacklisted(tweets[i])) {
+      console.log('wordfilter blocked');
+      console.log(tweets[i]);
+      continue;
+    }
     content += `${i}: ${tweets[i]}\n`;
   }
-
   const rickenEmbed = new MessageEmbed()
     .setTitle('Choose a tweet')
     .setDescription(content)
     .setTimestamp()
     .setFooter({ text: 'React 0️⃣-9️⃣ to select a tweet.' });
-  console.log('posting to discord');
-  const msg = await discordClient.channels.cache
-    .get(channelID)
-    .send({ embeds: [rickenEmbed] });
-  queue[msg.id] = { tweet: tweets };
+  // console.log('posting to discord');
+  return { rickenEmbed, tweets };
 }
 
 discordClient.on('messageReactionAdd', async (reaction, user) => {
@@ -501,18 +535,17 @@ async function go(input) {
   if (!prompt) {
     const r = Math.floor(Math.random() * prompts.length);
     prompt = prompts[r];
-  }
-
-  console.log(prompt);
-  if (Math.random() < 0.25) {
-    const len = Math.floor(Math.random() * 10 + 3);
-    console.log('chars', len);
-    prompt = prompt.substring(0, len).trim();
-  } else {
-    const len = Math.floor(Math.random() * 5 + 1);
-    console.log('tokens', len);
-    const tokens = prompt.split(/\s+/);
-    prompt = tokens.slice(0, len).join(' ');
+    console.log(prompt);
+    if (Math.random() < 0.25) {
+      const len = Math.floor(Math.random() * 10 + 3);
+      console.log('chars', len);
+      prompt = prompt.substring(0, len).trim();
+    } else {
+      const len = Math.floor(Math.random() * 5 + 1);
+      console.log('tokens', len);
+      const tokens = prompt.split(/\s+/);
+      prompt = tokens.slice(0, len).join(' ');
+    }
   }
   console.log(prompt);
   const result = await query(prompt, 10);
@@ -520,7 +553,7 @@ async function go(input) {
   for (let i = 0; i < result.length; i++) {
     choices.push(result[i].generated_text);
   }
-  addChoices(choices);
+  return await addChoices(choices);
 }
 
 function threadIt(txt) {
