@@ -75,13 +75,14 @@ discordClient.once('ready', readyDiscord);
 
 async function readyDiscord() {
   generateTweet();
-  setInterval(generateTweet, 60 * 60 * 2 * 1000);
+  setInterval(generateTweet, 60 * 60 * 6 * 1000);
   console.log('💖');
 }
 
 function generateTweet() {
   // go();
   // return;
+
   const r = Math.random();
   if (r < 0.1) acrostic();
   else if (r < 0.2) goPair();
@@ -461,6 +462,7 @@ discordClient.on('messageReactionAdd', async (reaction, user) => {
         queue[id] = undefined;
       } else if (reaction._emoji.name == '👎') {
         await reaction.message.reply('tweet cancelled!');
+        generateTweet();
       }
     } else {
       await reaction.message.reply('did not find this tweet in the queue!');
