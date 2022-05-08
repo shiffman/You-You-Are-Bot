@@ -12,10 +12,10 @@ for (fileName of files) {
     console.log(lines.length);
     total += lines.length;
     for (line of lines) {
-      allQuotes.push(`${line} <|endoftext|>`);
+      allQuotes.push(`${line}`);
     }
   }
 }
 console.log(total, allQuotes.length);
 fs.writeFileSync('prompts.txt', allQuotes.join('\n'));
-fs.writeFileSync('all.txt', allQuotes.join('\n'));
+fs.writeFileSync('all.txt', allQuotes.join('  <|endoftext|>\n'));
