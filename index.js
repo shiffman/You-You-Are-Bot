@@ -79,8 +79,19 @@ async function readyDiscord() {
   console.log('💖');
 }
 
+generateTweet();
+
 async function generateTweet() {
   // go();
+  // return;
+
+  // For a tweet
+  // let s = `Sorry you can’t have your cake and eat it too, but you can’t have a piece of it, either. The problem is, we think we’re the only ones who can have the cake. And the cake is us. So if you ate the piece, too, then we think we’re the only piece of the cake. And the cake is the world.`;
+  // const thread = threadIt(s);
+  // let data = await tweetIt(thread[0]);
+  // for (let i = 1; i < thread.length; i++) {
+  //   data = await tweetIt(thread[i], data.id_str);
+  // }
   // return;
 
   const r = Math.random();
@@ -576,21 +587,23 @@ function threadIt(txt) {
       thread.push(tweet);
     }
   } else {
-    let total = Math.floor(txt.length / 270) + 1;
-    let words = txt.split(' ');
-    let len = Math.floor(words.length / total);
-    let first = true;
-    while (words.length > 0) {
-      let tweet = '...' + words.join(' ').trim();
-      if (tweet.length <= 280) {
-        words = [];
+    let lines = txt.split(/([?!.\n]+)/g);
+    lines = lines.filter((s) => s.length > 0);
+    let tweet = '';
+    while (lines.length > 0) {
+      let next = lines[0] + lines[1];
+      let len = tweet.length + next.length;
+      if (len < 280) {
+        tweet += next;
+        lines.splice(0, 2);
+        if (lines.length == 0) {
+          thread.push(tweet.trim());
+          break; // This is redundant but just in case
+        }
       } else {
-        tweet = words.splice(0, len).join(' ').trim();
-        if (!first) tweet = '...' + tweet;
-        if (first) first = false;
-        if (words.length > 0) tweet += '...';
+        thread.push(tweet.trim());
+        tweet = '';
       }
-      thread.push(tweet);
     }
   }
   return thread;
