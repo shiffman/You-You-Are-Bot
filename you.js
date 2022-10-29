@@ -80,6 +80,7 @@ async function readyDiscord() {
 }
 
 generateTweet();
+//forceTweet();
 
 async function generateTweet() {
   // go();
@@ -470,6 +471,31 @@ async function addChoices(tweets) {
   return { rickenEmbed, tweets };
 }
 
+async function forceTweet() {
+  const tweet = `I wish I had your confidence
+
+You wish you could have all my confidence,
+
+Then you could give it away to somebody, right?
+
+When you're feeling like you want to cry,
+
+When you're feeling like you want to laugh,
+
+When you're feeling like you want to be free,
+
+Just put your hand up and tell everybody, "I don't give a fuck what you think, I want to cry, I want to laugh, I want to be free."
+
+And then you can cry and laugh, and be free.`;
+
+  const thread = threadIt(tweet);
+  console.log(thread);
+  let data = await tweetIt(thread[0]);
+  for (let i = 1; i < thread.length; i++) {
+    data = await tweetIt(thread[i], data.id_str);
+  }
+}
+
 discordClient.on('messageReactionAdd', async (reaction, user) => {
   const id = reaction.message.id;
   const channel = reaction.message.channel;
@@ -538,6 +564,7 @@ async function query(prompt, num_return_sequences) {
     body: JSON.stringify(data),
   });
   const result = await response.json();
+  console.log(result);
   return result;
 }
 
@@ -559,7 +586,7 @@ async function go(input) {
     }
   }
   console.log(prompt);
-  const result = await query(prompt, 10);
+  const result = await query(prompt, 5);
   const choices = [];
   for (let i = 0; i < result.length; i++) {
     choices.push(result[i].generated_text);
@@ -591,7 +618,9 @@ function threadIt(txt) {
     lines = lines.filter((s) => s.length > 0);
     let tweet = '';
     while (lines.length > 0) {
-      let next = lines[0] + lines[1];
+      let next = lines[0];
+      // Sometimes the last one is undefined
+      if (lines[1]) next += lines[1];
       let len = tweet.length + next.length;
       if (len < 280) {
         tweet += next;
