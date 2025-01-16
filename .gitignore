@@ -1,4 +1,9 @@
-*.txt
 .env
 node_modules
+lastSeen.json
 .DS_Store
+data/
+prompts/
+*.txt
+*.csv
+*.jsonl

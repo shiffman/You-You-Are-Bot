@@ -1,28 +1,37 @@
-// import fetch from 'node-fetch';
-require('dotenv').config();
-const { Client, Intents, MessageEmbed } = require('discord.js');
-const { TwitterApi } = require('twitter-api-v2');
+import 'dotenv/config';
+import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
+import axios from 'axios';
+import fs from 'fs';
+import * as RiTa from 'rita';
+import * as dotenv from 'dotenv';
+import bsky from '@atproto/api';
+import OpenAI from 'openai';
 
-const fetch = (...args) =>
-  import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const axios = require('axios');
+import { findPairs, centerOf } from './wordplay.js';
 
-const fs = require('fs');
-const data = fs.readFileSync('prompts.txt', 'utf-8');
-const prompts = data.split('\n');
+dotenv.config();
 
+const { BskyAgent } = bsky;
+
+const agent = new BskyAgent({
+  service: 'https://bsky.social',
+});
+
+await agent.login({
+  identifier: process.env.BLUESKY_USERNAME,
+  password: process.env.BLUESKY_PASSWORD,
+});
+
+const data = fs.readFileSync('data/prompts.txt', 'utf-8');
+``;
 const channelID = '962162083993100388';
 
-const RiTa = require('rita');
+const instructions = fs.readFileSync('prompts/instructions.txt', 'utf-8');
+// const instructions_short = fs.readFileSync('prompts/instructions_short.txt', 'utf-8');
 
-const wordfilter = require('wordfilter');
-
-const config = {
-  appKey: process.env.TWITTER_CONSUMER_KEY,
-  appSecret: process.env.TWITTER_CONSUMER_SECRET,
-  accessToken: process.env.TWITTER_ACCESS_TOKEN,
-  accessSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET,
-};
+const prompt_1 = fs.readFileSync('prompts/prompt-1.txt', 'utf-8');
+const prompt_2 = fs.readFileSync('prompts/prompt-2.txt', 'utf-8');
+const prompt_acrostic = fs.readFileSync('prompts/prompt-acrostic.txt', 'utf-8');
 
 const emojiLookup = {
   '0️⃣': 0,
@@ -37,87 +46,50 @@ const emojiLookup = {
   '9️⃣': 9,
 };
 
-const twitterClient = new TwitterApi(config);
-
-async function tweetIt(txt, reply_id) {
-  if (wordfilter.blacklisted(txt)) {
-    console.log('wordfilter blocked');
-    console.log(txt);
-    return;
-  }
-  console.log(txt, reply_id);
-  let params = undefined;
-  if (reply_id) {
-    params = {
-      in_reply_to_status_id: reply_id,
-      auto_populate_reply_metadata: true,
-    };
-  }
-  const response = await twitterClient.v1.tweet(txt, params);
-  return response;
-}
-
-const model_url =
-  'https://api-inference.huggingface.co/models/shiffman/gpt-neo-1.3B-youyouare-2022';
-
 const queue = {};
 
 console.log('Beep beep! 🤖');
 const discordClient = new Client({
   intents: [
-    Intents.FLAGS.GUILDS,
-    Intents.FLAGS.GUILD_MESSAGES,
-    Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
+    GatewayIntentBits.Guilds, // GUILDS
+    GatewayIntentBits.GuildMessages, // GUILD_MESSAGES
+    GatewayIntentBits.GuildMessageReactions, // GUILD_MESSAGE_REACTIONS
   ],
 });
 discordClient.login(process.env.DISCORD_TOKEN);
 discordClient.once('ready', readyDiscord);
 
 async function readyDiscord() {
-  //generateTweet();
-  setInterval(generateTweet, 60 * 60 * 6 * 1000);
+  generateTweet();
+  const hours = 2;
+  setInterval(generateTweet, hours * 60 * 60 * 1000);
   console.log('💖');
+  goListen();
 }
 
-generateTweet();
-//forceTweet();
-
-async function generateTweet() {
-  // go();
-  // return;
-
-  // For a tweet
-  // let s = `Sorry you can’t have your cake and eat it too, but you can’t have a piece of it, either. The problem is, we think we’re the only ones who can have the cake. And the cake is us. So if you ate the piece, too, then we think we’re the only piece of the cake. And the cake is the world.`;
-  // const thread = threadIt(s);
-  // let data = await tweetIt(thread[0]);
-  // for (let i = 1; i < thread.length; i++) {
-  //   data = await tweetIt(thread[i], data.id_str);
-  // }
-  // return;
-
+async function generateTweet(mention) {
   const r = Math.random();
-  if (r < 0.1) acrostic();
-  else if (r < 0.2) goPair();
-  else if (r < 0.3) centerOf();
-  else {
-    const { rickenEmbed, tweets } = await go();
-    console.log('posting to discord');
-    const msg = await discordClient.channels.cache
-      .get(channelID)
-      .send({ embeds: [rickenEmbed] });
-    queue[msg.id] = { tweet: tweets };
-  }
+  if (r < 0.25) goPair();
+  else if (r < 0.5) await goCenter();
+  else await go(mention);
+}
+
+function goPair() {
+  const pairs = findPairs();
+  addChoices(pairs);
+}
+
+async function goCenter() {
+  const centers = await centerOf();
+  addChoices(centers);
 }
 
 discordClient.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
-
   const { commandName, user, options } = interaction;
   console.log(commandName, user.username);
-
   if (commandName === 'generate-you') {
     let prompt = options.getString('prompt');
-    // Avoiding the 3 second issue?
     await interaction.deferReply();
     const { rickenEmbed, tweets } = await go(prompt);
     const msg = await interaction.editReply({ embeds: [rickenEmbed] });
@@ -131,409 +103,76 @@ function random(arr) {
   return arr[i];
 }
 
-function capitalize(word) {
-  let a = word.charAt(0);
-  a = a.toUpperCase();
-  return a + word.substring(1, word.length);
-}
-
-async function goPair() {
-  const tries = [];
-
-  for (let i = 0; i < 10; i++) {
-    let { a, b, word } = findPair();
-    word = capitalize(word);
-    let tweet;
-
-    let wordP = RiTa.pos(word, { simple: true })[0];
-    let aP = RiTa.pos(a, { simple: true })[0];
-    let bP = RiTa.pos(b, { simple: true })[0];
-    let wordP2 = RiTa.pos(word)[0];
-    let aP2 = RiTa.pos(a)[0];
-    let bP2 = RiTa.pos(b)[0];
-
-    const both = [aP, bP, aP2, bP2];
-    // One adjective, one noun
-    if (both.includes('a') && both.includes('n')) {
-      let adj, noun;
-      if (both[0] == 'a') {
-        adj = a;
-        noun = b;
-      } else {
-        adj = b;
-        noun = a;
-      }
-      if (/^[aeiou]/.test(adj)) adj = 'an ' + adj;
-      else adj = 'a ' + adj;
-      tweet = `${word} is nothing more than ${adj} ${noun}.`;
-    }
-    // One verb, one noun
-    else if (both.includes('v') && both.includes('n')) {
-      let verb, noun;
-      if (both[0] == 'v') {
-        verb = a;
-        noun = b;
-      } else {
-        verb = b;
-        noun = a;
-      }
-      if (/^[aeiou]/.test(noun)) noun = 'an ' + noun;
-      else noun = 'a ' + noun;
-      tweet = `${word} is nothing more than to ${verb} ${noun}.`;
-    }
-    // Both nouns
-    else if (both[0] == 'n' && both[1] == 'n') {
-      if (RiTa.pluralize(a) == a) a = a;
-      else if (/^[aeiou]/.test(a)) a = 'an ' + a;
-      else a = 'a ' + a;
-      if (RiTa.pluralize(b) == b) b = b;
-      else if (/^[aeiou]/.test(b)) b = 'an ' + b;
-      else b = 'a ' + b;
-      tweet = `${word} is nothing more than ${a} and ${b}.`;
-    }
-    // Verb + Preposition
-    else if (both.includes('in') && both.includes('v')) {
-      let prepo, verb;
-      if (both[0] == '-') {
-        prepo = a;
-        verb = b;
-      } else {
-        prepo = b;
-        verb = a;
-      }
-      if (both.includes('vbd'))
-        tweet = `${word} is nothing more than to be ${verb} ${prepo}.`;
-      else if (both.includes('vb'))
-        tweet = `${word} is nothing more than to ${verb} ${prepo}.`;
-    }
-    // Nun + Preposition
-    else if (both.includes('in') && both.includes('n')) {
-      let prepo, noun;
-      if (both[0] == '-') {
-        prepo = a;
-        noun = b;
-      } else {
-        prepo = b;
-        noun = a;
-      }
-      if (RiTa.pluralize(noun) == noun) noun = noun;
-      else if (/^[aeiou]/.test(noun)) noun = 'an ' + noun;
-      else noun = 'a ' + noun;
-      tweet = `${word} is nothing more than ${prepo} ${noun}.`;
-    }
-    // Verb + Adverb
-    else if (both.includes('v') && both.includes('r')) {
-      let verb, adverb;
-      let opening = `${word} is nothing more than`;
-      if (!both.includes('vbd')) opening = opening + ' to';
-      if (both[0] == 'v') {
-        verb = a;
-        adverb = b;
-      } else {
-        verb = b;
-        adverb = a;
-      }
-      tweet = `${opening} ${verb} ${adverb}.`;
-    }
-    // Verb + Adjective
-    else if (both.includes('v') && both.includes('a')) {
-      let verb, adj;
-      if (both[0] == 'v') {
-        verb = a;
-        adj = b;
-      } else {
-        verb = b;
-        adj = a;
-      }
-      tweet = `${word} is nothing more than ${adj} to ${verb}.`;
-    }
-    // Conjunction plus verb
-    else if (both.includes('cc') && both.includes('v')) {
-      let cc, verb;
-      if (both[0] == '-') {
-        cc = a;
-        verb = b;
-      } else {
-        cc = b;
-        verb = a;
-      }
-      tweet = `${word} is nothing more than ${cc} to ${verb}.`;
-    }
-    // Conjunction plus noun
-    else if (both.includes('cc') && both.includes('n')) {
-      let cc, noun;
-      if (both[0] == '-') {
-        cc = a;
-        noun = b;
-      } else {
-        cc = b;
-        noun = a;
-      }
-      if (RiTa.pluralize(noun) == noun) noun = noun;
-      else if (/^[aeiou]/.test(noun)) noun = 'an ' + noun;
-      else noun = 'a ' + noun;
-      tweet = `${word} is nothing more than ${cc} ${noun}.`;
-    } else {
-      let msg = 'pattern not detected\n';
-      msg += `${word}: ${wordP} ${wordP2}\n`;
-      msg += `${a}: ${aP} ${aP2}\n`;
-      msg += `${b}: ${bP} ${bP2}`;
-      console.log(msg);
-    }
-
-    if (tweet) tries.push(tweet);
-  }
-  console.log(tries);
-  const { rickenEmbed, tweets } = await addChoices(tries);
-  console.log('posting to discord');
-  const msg = await discordClient.channels.cache
-    .get(channelID)
-    .send({ embeds: [rickenEmbed] });
-  queue[msg.id] = { tweet: tweets };
-}
-
-function findPair() {
-  for (let i = 0; i < 100; i++) {
-    // const word = RiaTa.search(/.*?s$/, { shuffle: true });
-    const words = RiTa.search(/.{6,}/, { shuffle: true });
-    for (let word of words) {
-      for (let j = 3; j <= word.length - 3; j++) {
-        const a = word.substring(0, j);
-        const b = word.substring(j, word.length);
-        if (RiTa.hasWord(a) && RiTa.hasWord(b)) {
-          return { word, a, b };
-        }
-      }
-    }
-  }
-  return undefined;
-}
-
-async function centerOf() {
-  const tweets = [];
-
-  for (let i = 0; i < 5; i++) {
-    // A random word
-    let randomWordURL =
-      `https://api.wordnik.com/v4/words.json/randomWord?` +
-      `&minLength=2&maxLength=5&minCorpusCount=5000` +
-      '&includePartOfSpeech=noun' +
-      '&excludePartOfSpeech=proper-noun,proper-noun-plural,proper-noun-posessive,suffix,family-name,idiom,affix&' +
-      `&api_key=${process.env.WORDNIK_TOKEN}`;
-    console.log(randomWordURL);
-    const response1 = await fetch(randomWordURL);
-    const json = await response1.json();
-    const word = json.word.toLowerCase();
-    console.log(word);
-    const regex = `^[a-zA-Z]+${word}[a-zA-Z]+$`;
-    const params = {
-      method: 'GET',
-      url: 'https://wordsapiv1.p.rapidapi.com/words/',
-      params: {
-        letterPattern: regex,
-        limit: '10',
-        random: 'true',
-      },
-      headers: {
-        'X-RapidAPI-Host': 'wordsapiv1.p.rapidapi.com',
-        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
-      },
-    };
-    const { data } = await axios.request(params);
-
-    if (data.word) {
-      const tweet = `At the center of ${data.word} is ${word}.`;
-      console.log(tweet);
-      tweets.push(tweet);
-    } else {
-      console.log('no luck');
-    }
-  }
-  const { rickenEmbed } = await addChoices(tweets);
-  console.log('posting to discord');
-  const msg = await discordClient.channels.cache
-    .get(channelID)
-    .send({ embeds: [rickenEmbed] });
-  queue[msg.id] = { tweet: tweets };
-}
-
-async function acrostic() {
-  let poem = [];
-  //const words = ['Destiny']; //, 'You', 'Worker', 'Lumon', 'Are', 'Who'];
-  //const word = random(words);
-
-  // A random word
-  let randomWordURL =
-    `https://api.wordnik.com/v4/words.json/randomWord?` +
-    `&minLength=2&maxLength=6&minCorpusCount=5000` +
-    `&api_key=${process.env.WORDNIK_TOKEN}`;
-  console.log(randomWordURL);
-
-  const response = await fetch(randomWordURL);
-  const json = await response.json();
-  const word = json.word.toUpperCase();
-  console.log(word);
-  poem.push(`${word}, an acrostic poem experience`);
-  for (let i = 0; i < word.length; i++) {
-    // One option is to use the AI model
-    // let prompt = `${word.charAt(i).toUpperCase()} is for ${word
-    //   .charAt(i)
-    //   .toLowerCase()}`;
-    // let result = await query(prompt);
-    // let line = result[0].generated_text;
-    // console.log(line);
-    // const opening = line.match(/\w is for \w+/)[0];
-    // if (line.length < opening.length + 3) {
-    // console.log('trying again');
-
-    const len = Math.floor(Math.random() * 10 + 2);
-    const regex = `^${word.charAt(i).toLowerCase()}`;
-    const params = {
-      method: 'GET',
-      url: 'https://wordsapiv1.p.rapidapi.com/words/',
-      params: {
-        letterPattern: `${regex}.{3,}$`,
-        limit: '1',
-        random: 'true',
-      },
-      headers: {
-        'X-RapidAPI-Host': 'wordsapiv1.p.rapidapi.com',
-        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
-      },
-    };
-    const response = await axios.request(params);
-    let opening = `${word.charAt(i).toUpperCase()} is for ${
-      response.data.word
-    }`;
-    const options = [',', ' as in', ' if', ' which', ' to', ','];
-    let prompt = `${opening}${random(options)}`;
-    console.log(prompt);
-    result = await query(prompt);
-    line = result[0].generated_text;
-    console.log(line);
-    if (line.length > 80) {
-      const lines = line.split(/([.!?\n])/g);
-      console.log(lines);
-      if (lines.length >= 2) line = lines[0] + lines[1];
-      // Sometimes we lose an end quote
-      if (lines[2] && lines[2].charAt(0) == '"') line = line + '"';
-    }
-    line = line.trim();
-    poem.push(line);
-  }
-
-  console.log(poem);
-  let tweet = poem.join('\n');
-  console.log(tweet);
-  add2Queue(tweet);
-  // console.log(tweet.length);
-  // console.log("let's thread it!");
-  // let thread = threadIt(tweet);
-  // console.log(thread);
-}
-
-async function add2Queue(tweet) {
-  if (wordfilter.blacklisted(tweet)) {
-    console.log('wordfilter blocked');
-    console.log(tweet);
-    return;
-  }
+async function addChoices(tweets, mention) {
   console.log('adding to queue');
-  const rickenEmbed = new MessageEmbed()
-    .setTitle('New YouYouAreBot Tweet!')
-    .setDescription(tweet)
-    .setTimestamp()
-    .setFooter({ text: 'React with 👍 to approve, 👎 to reject.' });
-  console.log('posting to discord');
-  const msg = await discordClient.channels.cache
-    .get(channelID)
-    .send({ embeds: [rickenEmbed] });
-  queue[msg.id] = { tweet };
-}
-
-async function addChoices(tweets) {
-  console.log('adding to queue');
+  console.log(tweets);
   let content = '';
   for (let i = 0; i < tweets.length; i++) {
-    if (wordfilter.blacklisted(tweets[i])) {
-      console.log('wordfilter blocked');
-      console.log(tweets[i]);
-      continue;
-    }
     content += `${i}: ${tweets[i]}\n`;
   }
-  const rickenEmbed = new MessageEmbed()
+
+  if (content.length >= 4096) {
+    content = content.substring(0, 4096);
+  }
+
+  const rickenEmbed = new EmbedBuilder()
     .setTitle('Choose a tweet')
     .setDescription(content)
     .setTimestamp()
     .setFooter({ text: 'React 0️⃣-9️⃣ to select a tweet.' });
-  // console.log('posting to discord');
-  return { rickenEmbed, tweets };
-}
 
-async function forceTweet() {
-  const tweet = `I wish I had your confidence
+  if (mention) {
+    const userName = mention.author.handle;
 
-You wish you could have all my confidence,
+    rickenEmbed.setTitle('New TheYouYouAreBot Reply!');
+    rickenEmbed.addFields({
+      name: 'reply to',
+      value: userName,
+    });
 
-Then you could give it away to somebody, right?
-
-When you're feeling like you want to cry,
-
-When you're feeling like you want to laugh,
-
-When you're feeling like you want to be free,
-
-Just put your hand up and tell everybody, "I don't give a fuck what you think, I want to cry, I want to laugh, I want to be free."
-
-And then you can cry and laugh, and be free.`;
-
-  const thread = threadIt(tweet);
-  console.log(thread);
-  let data = await tweetIt(thread[0]);
-  for (let i = 1; i < thread.length; i++) {
-    data = await tweetIt(thread[i], data.id_str);
+    if (!mention.record.text || mention.record.text.length < 1) {
+      rickenEmbed.addFields({ name: 'original tweet', value: 'No text found' });
+    } else {
+      rickenEmbed.addFields({ name: 'original tweet', value: mention.record.text });
+    }
+    // rickenEmbed.setURL(`????????`);
   }
+  const msg = await discordClient.channels.cache.get(channelID).send({ embeds: [rickenEmbed] });
+  queue[msg.id] = { tweet: tweets };
+  if (mention) {
+    // TBD is this right???
+    queue[msg.id].reply = {
+      parent: { uri: mention.uri, cid: mention.cid },
+      root: mention.record.reply?.root || { uri: mention.uri, cid: mention.cid },
+    };
+    // Let's also put the full mention
+    queue[msg.id].mention = mention;
+  }
+  // console.log(queue);
 }
 
 discordClient.on('messageReactionAdd', async (reaction, user) => {
   const id = reaction.message.id;
   const channel = reaction.message.channel;
-  console.log(channel.id);
   if (channel.id == channelID) {
     if (queue[id]) {
-      const { tweet, reply_id } = queue[id];
+      const { tweet, reply, mention } = queue[id];
       const emoji = reaction._emoji.name;
       const index = emojiLookup[emoji];
       if (index > -1) {
         console.log('Selected: ' + emojiLookup[emoji]);
         await reaction.message.reply(`Tweeting #${index}!`);
-        if (tweet[index].length > 280) {
-          const thread = threadIt(tweet[index]);
-          let data = await tweetIt(thread[0], reply_id);
-          for (let i = 1; i < thread.length; i++) {
-            data = await tweetIt(thread[i], data.id_str);
-          }
-        } else {
-          await tweetIt(tweet[index], reply_id);
-        }
+        console.log(reply);
+        await skeetIt(tweet[index], reply);
       } else if (emoji == '👍') {
         console.log('approved');
-        if (tweet.length > 280) {
-          const thread = threadIt(tweet);
-          let data = await tweetIt(thread[0], reply_id);
-          for (let i = 1; i < thread.length; i++) {
-            data = await tweetIt(thread[i], data.id_str);
-          }
-        } else {
-          await tweetIt(tweet, reply_id);
-        }
+        await skeetIt(tweet, reply);
         await reaction.message.reply('Tweet posted!');
         // await reaction.message.reply('Testing not tweeting!');
         queue[id] = undefined;
       } else if (reaction._emoji.name == '👎') {
         await reaction.message.reply('tweet cancelled!');
-        generateTweet();
+        await generateTweet(mention);
       }
     } else {
       await reaction.message.reply('did not find this tweet in the queue!');
@@ -541,99 +180,156 @@ discordClient.on('messageReactionAdd', async (reaction, user) => {
   }
 });
 
-async function query(prompt, num_return_sequences) {
-  const num = num_return_sequences || 1;
-  const data = {
-    inputs: prompt,
-    parameters: {
-      max_length: 120,
-      return_full_text: true,
-      top_p: 0.9,
-      temperature: 1.0,
-      num_return_sequences: num,
-    },
-    options: {
-      use_gpu: false,
-      use_cache: false,
-      wait_for_model: true,
-    },
-  };
-  const response = await fetch(model_url, {
-    headers: { Authorization: `Bearer ${process.env.HUGGING_FACE_API_TOKEN}` },
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-  const result = await response.json();
-  console.log(result);
-  return result;
-}
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_SECRET_KEY,
+});
 
-async function go(input) {
-  let prompt = input;
-  if (!prompt) {
-    const r = Math.floor(Math.random() * prompts.length);
-    prompt = prompts[r];
-    console.log(prompt);
-    if (Math.random() < 0.25) {
-      const len = Math.floor(Math.random() * 10 + 3);
-      console.log('chars', len);
-      prompt = prompt.substring(0, len).trim();
+async function queryOpenAI(prompt, num = 5) {
+  if (!prompt || prompt.length < 1) {
+    let r = Math.random();
+    if (r < 0.33) {
+      prompt = prompt_1;
+
+      if (Math.random() < 0.5) {
+        let word = RiTa.randomWord();
+        prompt = 'Generate a random thought about ' + word + '.';
+      }
+      console.log(prompt);
+    } else if (r < 0.66) {
+      prompt = prompt_2;
+      console.log('word play prompt');
     } else {
-      const len = Math.floor(Math.random() * 5 + 1);
-      console.log('tokens', len);
-      const tokens = prompt.split(/\s+/);
-      prompt = tokens.slice(0, len).join(' ');
+      prompt = prompt_acrostic;
+      console.log('acrostic prompt');
     }
   }
-  console.log(prompt);
-  const result = await query(prompt, 5);
+
+  const messages = [];
+  messages.push({ role: 'system', content: instructions });
+  // messages.push({ role: 'system', content: instructions_short });
+  messages.push({ role: 'user', content: prompt });
+  console.log(process.env.MODEL_NAME);
+  const temperature = 1 + Math.random() * 0.25;
+  console.log('Temperature: ' + temperature);
+  const response = await openai.chat.completions.create({
+    model: process.env.MODEL_NAME,
+    messages: messages,
+    response_format: {
+      type: 'text',
+    },
+    temperature,
+    max_completion_tokens: 2048,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    n: num,
+  });
+  return response.choices;
+}
+
+async function go(mention) {
+  let prompt = mention?.record.text;
+  const result = await queryOpenAI(prompt, 5);
   const choices = [];
   for (let i = 0; i < result.length; i++) {
-    choices.push(result[i].generated_text);
+    choices.push(result[i].message.content);
   }
-  return await addChoices(choices);
+  await addChoices(choices, mention);
 }
 
-function threadIt(txt) {
-  // TO DO, COMBINE
-  let thread = [];
-  if (/acrostic poem experience/.test(txt)) {
-    console.log('acrostic!');
-    let lines = txt.split('\n');
-    let index = 0;
-    while (index < lines.length) {
-      let total = 0;
-      let tweet = '';
-      while (index < lines.length) {
-        console.log(index, total);
-        total += lines[index].length;
-        if (total > 280) break;
-        tweet += lines[index] + '\n';
-        index++;
-      }
-      thread.push(tweet);
-    }
+async function skeetIt(txt, reply) {
+  // Character limit per post
+  const maxLen = 300;
+  if (txt.length <= maxLen) {
+    // Just go ahead and post we're god!
+    const record = {
+      $type: 'app.bsky.feed.post',
+      text: txt,
+      reply,
+    };
+    const response = await agent.post(record);
+    console.log('Posted!', response.validationStatus);
   } else {
-    let lines = txt.split(/([?!.\n]+)/g);
-    lines = lines.filter((s) => s.length > 0);
-    let tweet = '';
-    while (lines.length > 0) {
-      let next = lines[0];
-      // Sometimes the last one is undefined
-      if (lines[1]) next += lines[1];
-      let len = tweet.length + next.length;
-      if (len < 280) {
-        tweet += next;
-        lines.splice(0, 2);
-        if (lines.length == 0) {
-          thread.push(tweet.trim());
-          break; // This is redundant but just in case
-        }
-      } else {
-        thread.push(tweet.trim());
-        tweet = '';
+    // Otherwise, break it into a thread
+    const thread = threadIt(txt, maxLen);
+    console.log('Threading into', thread.length, 'parts...');
+    if (reply) {
+      let { parent, root } = reply;
+    }
+    for (const skeet of thread) {
+      const record = {
+        $type: 'app.bsky.feed.post',
+        text: skeet,
+      };
+      if (parent && root) {
+        record.reply = {
+          root,
+          parent,
+        };
       }
+      const response = await agent.post(record);
+      console.log('Posted thread', response.validationStatus);
+      if (!root) {
+        root = { uri: response.uri, cid: response.cid };
+      }
+      parent = { uri: response.uri, cid: response.cid };
     }
   }
+}
+
+function threadIt(txt, maxLen = 300) {
+  const lines = txt.split(/([?!.]+)/g).filter((s) => s.trim().length > 0);
+  const thread = [];
+  let currentPost = '';
+  for (let i = 0; i < lines.length; i++) {
+    const nextLine = lines[i];
+    const potentialLength = currentPost.length + nextLine.length;
+    if (potentialLength <= maxLen) {
+      currentPost += nextLine;
+    } else {
+      thread.push(currentPost.trim());
+      currentPost = nextLine;
+    }
+  }
+  if (currentPost.trim()) {
+    thread.push(currentPost.trim());
+  }
   return thread;
+}
+
+let lastSeenAt = null;
+const lastSeenFile = './lastSeen.json';
+if (fs.existsSync(lastSeenFile)) {
+  const fileContent = fs.readFileSync(lastSeenFile, 'utf8');
+  lastSeenAt = JSON.parse(fileContent).lastSeenAt;
+}
+
+async function goListen() {
+  const { data } = await agent.listNotifications({ limit: 50 });
+  // Filter for mentions and replies
+  const validReasons = ['mention', 'reply', 'quote'];
+  const mentions = data.notifications.filter((notification) => {
+    const isReasonValid = validReasons.includes(notification.reason);
+    const isAfterLastSeen = !lastSeenAt || new Date(notification.indexedAt) > new Date(lastSeenAt);
+    return isReasonValid && isAfterLastSeen;
+  });
+  if (mentions.length > 0) {
+    console.log(`New mentions (${mentions.length}):`);
+    for (const mention of mentions) {
+      console.log(`- ${mention.author.handle}: ${mention.record.text}`);
+      console.log('replying!');
+      let prompt = mention.record.text;
+      console.log('prompt: ' + prompt);
+      const result = await queryOpenAI(prompt, 5);
+      const choices = [];
+      for (let i = 0; i < result.length; i++) {
+        choices.push(result[i].message.content);
+      }
+      await addChoices(choices, mention);
+    }
+    lastSeenAt = mentions[0]?.indexedAt;
+    fs.writeFileSync(lastSeenFile, JSON.stringify({ lastSeenAt }, null, 2));
+    console.log('Updated last seen timestamp.');
+  }
+  setTimeout(goListen, 5000);
 }

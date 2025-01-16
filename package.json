@@ -3,20 +3,22 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@discordjs/builders": "^0.13.0",
-    "@discordjs/rest": "^0.4.1",
-    "axios": "^0.26.1",
-    "discord-api-types": "^0.32.0",
-    "discord.js": "^13.6.0",
-    "dotenv": "^16.0.0",
-    "rita": "^2.8.1",
-    "twitter-api-v2": "^1.11.3",
-    "wordfilter": "^0.2.6"
+    "@atproto/api": "^0.13.16",
+    "@discordjs/builders": "^1.9.0",
+    "@discordjs/rest": "^2.4.0",
+    "axios": "^1.7.7",
+    "csv-parser": "^3.1.0",
+    "discord-api-types": "^0.37.105",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "openai": "^4.78.1",
+    "rita": "^3.1.3"
   }
 }

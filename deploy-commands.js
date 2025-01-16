@@ -18,10 +18,7 @@ const rest = new REST({ version: '9' }).setToken(process.env.DISCORD_TOKEN);
 
 rest
   .put(
-    Routes.applicationGuildCommands(
-      process.env.DISCORD_CLIENTID,
-      process.env.DISCORD_SERVERID
-    ),
+    Routes.applicationGuildCommands(process.env.DISCORD_CLIENTID, process.env.DISCORD_SERVERID),
     {
       body: commands,
     }
