@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
 import axios from 'axios';
 import fs from 'fs';
-import * as RiTa from 'rita';
+import { RiTa } from 'rita';
 import * as dotenv from 'dotenv';
 import bsky from '@atproto/api';
 import OpenAI from 'openai';
