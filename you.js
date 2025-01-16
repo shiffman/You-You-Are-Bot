@@ -22,8 +22,7 @@ await agent.login({
   password: process.env.BLUESKY_PASSWORD,
 });
 
-const data = fs.readFileSync('data/prompts.txt', 'utf-8');
-``;
+// const data = fs.readFileSync('data/prompts.txt', 'utf-8');
 const channelID = '962162083993100388';
 
 const instructions = fs.readFileSync('prompts/instructions.txt', 'utf-8');
@@ -327,6 +326,7 @@ async function goListen() {
       }
       await addChoices(choices, mention);
     }
+
     lastSeenAt = mentions[0]?.indexedAt;
     fs.writeFileSync(lastSeenFile, JSON.stringify({ lastSeenAt }, null, 2));
     console.log('Updated last seen timestamp.');
