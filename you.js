@@ -68,8 +68,8 @@ async function readyDiscord() {
 
 async function generateTweet(mention) {
   const r = Math.random();
-  if (r < 0.25) goPair();
-  else if (r < 0.5) await goCenter();
+  if (r < 0.1) goPair();
+  else if (r < 0.2) await goCenter();
   else await go(mention);
 }
 
