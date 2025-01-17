@@ -252,8 +252,10 @@ async function skeetIt(txt, reply) {
     // Otherwise, break it into a thread
     const thread = threadIt(txt, maxLen);
     console.log('Threading into', thread.length, 'parts...');
+    let parent, root;
     if (reply) {
-      let { parent, root } = reply;
+      let parent = reply.parent;
+      let root = reply.root;
     }
     for (const skeet of thread) {
       const record = {
