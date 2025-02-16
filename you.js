@@ -32,6 +32,8 @@ const prompt_1 = fs.readFileSync('prompts/prompt-1.txt', 'utf-8');
 const prompt_2 = fs.readFileSync('prompts/prompt-2.txt', 'utf-8');
 const prompt_acrostic = fs.readFileSync('prompts/prompt-acrostic.txt', 'utf-8');
 
+const yyabook = fs.readFileSync('yya-book/yya-all.txt', 'utf-8');
+
 const emojiLookup = {
   '0️⃣': 0,
   '1️⃣': 1,
@@ -68,8 +70,8 @@ async function readyDiscord() {
 
 async function generateTweet(mention) {
   const r = Math.random();
-  if (r < 0.1) goPair();
-  else if (r < 0.2) await goCenter();
+  if (r < 0.05) goPair();
+  else if (r < 0.1) await goCenter();
   else await go(mention);
 }
 
@@ -150,6 +152,8 @@ async function addChoices(tweets, mention) {
   // console.log(queue);
 }
 
+let passCleanup = false;
+
 discordClient.on('messageReactionAdd', async (reaction, user) => {
   const id = reaction.message.id;
   const channel = reaction.message.channel;
@@ -160,8 +164,17 @@ discordClient.on('messageReactionAdd', async (reaction, user) => {
       const index = emojiLookup[emoji];
       if (index > -1) {
         console.log('Selected: ' + emojiLookup[emoji]);
+        if (passCleanup) {
+          await reaction.message.reply(`grammar and formatting cleanup`);
+          const result = await cleanupOpenAI(tweet[index], reply);
+          const choices = [];
+          for (let i = 0; i < result.length; i++) {
+            choices.push(result[i].message.content);
+          }
+          await addChoices(choices, mention);
+          return;
+        }
         await reaction.message.reply(`Tweeting #${index}!`);
-        console.log(reply);
         await skeetIt(tweet[index], reply);
       } else if (emoji == '👍') {
         console.log('approved');
@@ -172,6 +185,9 @@ discordClient.on('messageReactionAdd', async (reaction, user) => {
       } else if (reaction._emoji.name == '👎') {
         await reaction.message.reply('tweet cancelled!');
         await generateTweet(mention);
+      } else if (emoji == '🔧') {
+        await reaction.message.reply('clean up mode enabled');
+        passCleanup = true;
       }
     } else {
       await reaction.message.reply('did not find this tweet in the queue!');
@@ -186,20 +202,36 @@ const openai = new OpenAI({
 async function queryOpenAI(prompt, num = 5) {
   if (!prompt || prompt.length < 1) {
     let r = Math.random();
-    if (r < 0.33) {
-      prompt = prompt_1;
-
+    if (r < 0.8) {
+      let randomConcept = RiTa.randomWord();
       if (Math.random() < 0.5) {
-        let word = RiTa.randomWord();
-        prompt = 'Generate a random thought about ' + word + '.';
+        console.log('wikipedia time');
+        const response = await axios.get(
+          'https://en.wikipedia.org/api/rest_v1/page/random/summary'
+        );
+        randomConcept = response.data.title;
+        // take anything out that was in parentheses in randomConcept
+        randomConcept = randomConcept.replace(/\(.*?\)/g, '');
+      }
+
+      console.log(randomConcept);
+      let r2 = Math.random();
+      if (r2 < 0.2) {
+        prompt = 'Tell me a story.';
+      } else if (r2 < 0.4) {
+        prompt = 'Tell me a story about ' + randomConcept;
+      } else if (r2 < 0.6) {
+        prompt = 'Tell me about ' + randomConcept;
+      } else {
+        prompt = 'Explain the concept of ' + randomConcept;
       }
       console.log(prompt);
-    } else if (r < 0.66) {
-      prompt = prompt_2;
-      console.log('word play prompt');
-    } else {
+    } else if (r < 0.95) {
       prompt = prompt_acrostic;
       console.log('acrostic prompt');
+    } else {
+      prompt = prompt_2;
+      console.log('word play prompt');
     }
   }
 
@@ -208,7 +240,7 @@ async function queryOpenAI(prompt, num = 5) {
   // messages.push({ role: 'system', content: instructions_short });
   messages.push({ role: 'user', content: prompt });
   console.log(process.env.MODEL_NAME);
-  const temperature = 1 + Math.random() * 0.25;
+  const temperature = 0.9 + Math.random() * 0.3;
   console.log('Temperature: ' + temperature);
   const response = await openai.chat.completions.create({
     model: process.env.MODEL_NAME,
@@ -226,9 +258,39 @@ async function queryOpenAI(prompt, num = 5) {
   return response.choices;
 }
 
+async function cleanupOpenAI(prompt, num = 1) {
+  passCleanup = false;
+  const messages = [];
+  const newPrompt =
+    'Please fix up the grammar of this paragraph. It is meant to be written in the style of Dr. Ricken Hale (character from Serverance) so you can make very minor changes to adapt the style, but do not significantly add to or alter the original text. Return only the revised text, no other information at all.\n\n' +
+    prompt;
+
+  messages.push({
+    role: 'system',
+    content:
+      "You are now in the grammar and formatting cleanup mode. Please make sure that the text is grammatically correct and in the style of Dr. Ricken Hale. Here is Dr. Ricken Hale's book The You You Are as a style reference.\n\n" +
+      yyabook +
+      'Even though you have this massive reference, you should only make tiny changes to fix up grammar, formatting, or maybe one or two word choices. Your new text should essentially be identical otherwise.',
+  });
+  messages.push({ role: 'user', content: newPrompt });
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: messages,
+    response_format: {
+      type: 'text',
+    },
+    max_completion_tokens: 2048,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    n: num,
+  });
+  return response.choices;
+}
+
 async function go(mention) {
   let prompt = mention?.record.text;
-  const result = await queryOpenAI(prompt, 5);
+  const result = await queryOpenAI(prompt, 8);
   const choices = [];
   for (let i = 0; i < result.length; i++) {
     choices.push(result[i].message.content);
